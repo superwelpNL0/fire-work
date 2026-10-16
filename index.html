@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Celebration Overlay – Confetti & Fireworks</title>
+<style>
+:root{color-scheme:dark;--bg:#0f1117;--card:#181b24;--line:#2a2e3c;--tx:#e8eaf0;--mut:#8b91a3;--ac:#4f8cff}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--tx);font:14px system-ui,-apple-system,Segoe UI,sans-serif}
+body.overlay,body.overlay #app{background:transparent!important;overflow:hidden}
+body.overlay #panel{display:none}
+#app{display:flex;height:100%}
+#stage{flex:1;position:relative;min-width:0;background:repeating-conic-gradient(#1b1e29 0 25%,#141720 0 50%) 0 0/24px 24px}
+body.overlay #stage{position:fixed;inset:0;background:none}
+canvas{position:absolute;inset:0;width:100%;height:100%}
+#panel{width:370px;overflow:auto;padding:14px;background:var(--card);border-left:1px solid var(--line)}
+@media(max-width:700px){#stage{display:none}#panel{width:100%;border:0}}
+h1{font-size:16px;margin:0 0 2px}
+.sub{color:var(--mut);font-size:12px;margin-bottom:12px}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);margin:16px 0 8px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+button{font:inherit;color:var(--tx);background:#222636;border:1px solid var(--line);border-radius:8px;padding:9px 8px;cursor:pointer}
+button:hover{border-color:var(--ac)}
+button:active{transform:scale(.97)}
+button.big{background:linear-gradient(135deg,#2f7bff,#ff2d3d);border:0;font-weight:700;grid-column:span 2}
+button.clr{color:#ff8a8a}
+kbd{color:var(--mut);font-size:11px;margin-left:4px}
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chip{width:30px;height:30px;border-radius:50%;border:3px solid transparent;opacity:.35;padding:0}
+.chip.on{opacity:1;border-color:#fff}
+.row{display:flex;align-items:center;gap:8px;margin:7px 0}
+.row label{width:105px;color:var(--mut);font-size:12px}
+.row input[type=range]{flex:1;accent-color:var(--ac)}
+.row output{width:36px;text-align:right;font-size:12px}
+.tg{display:flex;gap:6px;flex-wrap:wrap}
+.tg button.on{background:var(--ac);border-color:var(--ac)}
+details{margin-top:16px;color:var(--mut);font-size:12px;line-height:1.5}
+summary{cursor:pointer;color:var(--tx)}
+code{background:#0f1117;padding:1px 5px;border-radius:4px;word-break:break-all}
+</style></head>
+<body>
+<div id="app">
+ <div id="stage"><canvas id="cv"></canvas></div>
+ <div id="panel">
+  <h1>🎉 Celebration Control Panel</h1>
+  <div class="sub">Triggers go live to the OBS overlay. Preview on the left.</div>
+  <h2>Effects</h2>
+  <div class="grid" id="fx"></div>
+  <h2>Colors</h2>
+  <div class="chips" id="chips"></div>
+  <div class="tg" id="presets" style="margin-top:8px"></div>
+  <h2>Settings</h2>
+  <div id="sl"></div>
+  <h2>Confetti shapes</h2>
+  <div class="tg" id="shapes"></div>
+  <h2>Auto mode</h2>
+  <div class="row"><label><input type="checkbox" id="auto"> Auto fire</label><input type="range" id="ai" min="3" max="60" value="10"><output id="aio">10s</output></div>
+  <details><summary>OBS setup</summary>
+   <p>1. Add a <b>Browser Source</b> → Local file → this file, URL ending in <code>?overlay</code> (or <code>file:///path/celebration-overlay.html?overlay</code>). Size 1920×1080. Remove the custom CSS.</p>
+   <p>2. Open the panel in OBS via <b>Docks → Custom Browser Docks</b> with the same file (no <code>?overlay</code>).</p>
+   <p>If the dock doesn't trigger the overlay on a local file, host both from a local server (<code>python -m http.server</code>) and use <code>http://localhost:8000/celebration-overlay.html</code> for both.</p>
+  </details>
+ </div>
+</div>
+<script>
+(()=>{
+const overlay=new URLSearchParams(location.search).has('overlay');
+if(overlay)document.body.classList.add('overlay');
+const cv=document.getElementById('cv'),cx=cv.getContext('2d');
+let W=1,H=1;
+function rs(){const r=cv.parentElement.getBoundingClientRect();W=cv.width=Math.max(1,r.width|0);H=cv.height=Math.max(1,r.height|0)}
+addEventListener('resize',rs);rs();
+const R=(a,b)=>a+Math.random()*(b-a),pick=a=>a[Math.random()*a.length|0];
+let P=[],F=[],timers=[];
+const later=(f,ms)=>timers.push(setTimeout(f,ms));
+const rep=(f,ms,n)=>{for(let i=0;i<n;i++)later(f,i*ms)};
+const K=()=>Math.max(.4,H/1080);
+
+/* ---------- confetti ---------- */
+function conf(x,y,ang,spr,sp,n,s,o={}){
+ const cols=s.colors.length?s.colors:['#ffffff'],shapes=o.shapes||(s.shapes.length?s.shapes:['square']),k=K();
+ for(let i=0;i<n;i++){
+  const a=ang+R(-.5,.5)*spr,v=sp*R(.35,1.1);
+  P.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,sz:s.size*R(.7,1.3)*k,shape:pick(shapes),c:pick(cols),
+   r:R(0,6.28),vr:R(-.3,.3),w:R(0,6.28),vw:R(.05,.2),life:s.dur*(o.lm||1)*R(.75,1.15),age:0,g:s.grav*k,drag:o.drag||.97});
+ }
+}
+function star(r){cx.beginPath();for(let i=0;i<10;i++){const q=i%2?r*.45:r,a=i*Math.PI/5-Math.PI/2;cx[i?'lineTo':'moveTo'](Math.cos(a)*q,Math.sin(a)*q)}cx.closePath();cx.fill()}
+
+/* ---------- fireworks ---------- */
+function rocket(s){
+ const cols=s.colors.length?s.colors:['#ffffff'];
+ F.push({k:'r',x:R(W*.12,W*.88),y:H,ty:R(H*.12,H*.45),vy:-H*.014,c:pick(cols),tr:[],s});
+}
+function explode(r){
+ const s=r.s,n=Math.round(80*s.fwSize),ring=Math.random()<.4,base=H*.009*s.fwSize,cols=s.colors.length?s.colors:['#ffffff'];
+ F.push({k:'f',x:r.x,y:r.y,age:0,c:r.c,rad:H*.16*s.fwSize});
+ for(let i=0;i<n;i++){
+  const a=i/n*6.283+R(-.05,.05),v=ring?base:base*Math.sqrt(R(.05,1));
+  F.push({k:'s',x:r.x,y:r.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,c:Math.random()<.78?r.c:(Math.random()<.5?'#ffffff':pick(cols)),life:R(1.1,1.8),age:0,tr:[]});
+ }
+}
+
+/* ---------- loop ---------- */
+let last=performance.now();
+function tick(t){
+ const dt=Math.min(3,(t-last)/16.67);last=t;const k=K();
+ cx.globalCompositeOperation='source-over';cx.clearRect(0,0,W,H);
+ for(let i=P.length-1;i>=0;i--){
+  const p=P[i];p.age+=dt/60;
+  if(p.age>p.life||p.y>H+60){P.splice(i,1);continue}
+  const d=Math.pow(p.drag,dt);
+  p.vx*=d;p.vy=p.vy*d+p.g*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.r+=p.vr*dt;p.w+=p.vw*dt;
+  const f=p.age/p.life,sy=Math.cos(p.w),z=p.sz;
+  cx.save();cx.globalAlpha=f>.75?1-(f-.75)/.25:1;cx.translate(p.x,p.y);cx.rotate(p.r);cx.fillStyle=p.c;
+  if(p.shape==='circle'){cx.beginPath();cx.ellipse(0,0,z/2,Math.abs(sy)*z/2+.5,0,0,6.283);cx.fill()}
+  else{cx.scale(1,sy);
+   if(p.shape==='star')star(z*.9);
+   else if(p.shape==='ribbon')cx.fillRect(-z*1.3,-z*.12,z*2.6,z*.24);
+   else cx.fillRect(-z/2,-z*.35,z,z*.7);}
+  cx.restore();
+ }
+ cx.globalCompositeOperation='lighter';
+ for(let i=F.length-1;i>=0;i--){
+  const o=F[i];
+  if(o.k==='r'){
+   o.tr.push([o.x,o.y]);if(o.tr.length>9)o.tr.shift();o.y+=o.vy*dt;
+   if(o.y<=o.ty){explode(o);F.splice(i,1);continue}
+   cx.globalAlpha=.9;cx.strokeStyle=o.c;cx.lineWidth=3*k;cx.lineCap='round';cx.beginPath();
+   o.tr.forEach((q,j)=>cx[j?'lineTo':'moveTo'](q[0],q[1]));cx.lineTo(o.x,o.y);cx.stroke();
+  }else if(o.k==='f'){
+   o.age+=dt/60;if(o.age>.3){F.splice(i,1);continue}
+   const g=cx.createRadialGradient(o.x,o.y,0,o.x,o.y,o.rad);g.addColorStop(0,o.c);g.addColorStop(1,'rgba(0,0,0,0)');
+   cx.globalAlpha=(1-o.age/.3)*.55;cx.fillStyle=g;cx.beginPath();cx.arc(o.x,o.y,o.rad,0,6.283);cx.fill();
+  }else{
+   o.age+=dt/60;if(o.age>o.life){F.splice(i,1);continue}
+   const d=Math.pow(.965,dt);o.vx*=d;o.vy=o.vy*d+.05*k*dt;o.x+=o.vx*dt;o.y+=o.vy*dt;
+   o.tr.push([o.x,o.y]);if(o.tr.length>6)o.tr.shift();
+   const f=o.age/o.life;let al=f>.6?1-(f-.6)/.4:1;if(f>.5)al*=R(.5,1);
+   cx.globalAlpha=al;cx.strokeStyle=o.c;cx.lineWidth=2.4*k;cx.lineCap='round';cx.beginPath();
+   o.tr.forEach((q,j)=>cx[j?'lineTo':'moveTo'](q[0],q[1]));cx.stroke();
+   cx.fillStyle=o.c;cx.beginPath();cx.arc(o.x,o.y,1.8*k,0,6.283);cx.fill();
+  }
+ }
+ cx.globalAlpha=1;requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+/* ---------- effects ---------- */
+const E={
+ burst(s){conf(W/2,H,-1.5708,1.3,H*.03,s.count,s)},
+ sides(s){conf(0,H*.95,-1.0,.5,H*.032,s.count,s);conf(W,H*.95,-2.14,.5,H*.032,s.count,s)},
+ rain(s){rep(()=>{for(let i=0;i<Math.ceil(s.count/25);i++)conf(R(0,W),-20,1.5708,.6,H*.004,1,s,{lm:1.8,drag:.98})},40,Math.round(s.dur*1000/40))},
+ fountain(s){rep(()=>conf(W/2,H,-1.5708,.5,H*.026,Math.ceil(s.count/20),s),30,Math.round(s.dur*1000/30))},
+ fireworks(s){let t=0;for(let i=0;i<s.fwCount;i++){later(()=>rocket(s),t);t+=R(250,600)}},
+ stars(s){conf(W/2,H*.5,0,6.283,H*.02,s.count,s,{shapes:['star']})},
+ finale(s){E.burst(s);later(()=>E.sides(s),150);later(()=>E.fireworks({...s,fwCount:s.fwCount+3}),300);later(()=>E.rain(s),600)}
+};
+function clearAll(){timers.forEach(clearTimeout);timers=[];P=[];F=[]}
+
+/* ---------- messaging ---------- */
+const ch='BroadcastChannel' in window?new BroadcastChannel('cf-overlay'):null;
+let lastId=0;
+function recv(m){
+ if(!m||m.id===lastId)return;lastId=m.id;
+ if(m.t==='fire'&&E[m.e])E[m.e](m.s);
+ if(m.t==='clear')clearAll();
+}
+function send(m){
+ m.id=Date.now()+Math.random();
+ try{ch&&ch.postMessage(m)}catch(e){}
+ try{localStorage.setItem('cf-msg',JSON.stringify(m))}catch(e){}
+}
+if(overlay){
+ if(ch)ch.onmessage=e=>recv(e.data);
+ addEventListener('storage',e=>{if(e.key==='cf-msg'&&e.newValue){try{recv(JSON.parse(e.newValue))}catch(_){}}});
+ return;
+}
+
+/* ---------- control panel ---------- */
+const DEF={colors:['#2f7bff','#ff2d3d'],count:120,size:9,grav:.15,dur:3.5,fwCount:5,fwSize:1,shapes:['square','circle','ribbon']};
+let S={...DEF};
+try{S={...DEF,...JSON.parse(localStorage.getItem('cf-settings')||'{}')}}catch(e){}
+const save=()=>{try{localStorage.setItem('cf-settings',JSON.stringify(S))}catch(e){}};
+const $=id=>document.getElementById(id);
+function go(e){E[e]({...S});send({t:'fire',e,s:{...S}})}
+function clr(){clearAll();send({t:'clear'})}
+
+const FX=[['Confetti burst','burst'],['Side cannons','sides'],['Confetti rain','rain'],['Fountain','fountain'],['Fireworks','fireworks'],['Stars','stars'],['🎆 FINALE','finale']];
+$('fx').innerHTML=FX.map((f,i)=>`<button data-e="${f[1]}" class="${i==6?'big':''}">${f[0]}<kbd>${i+1}</kbd></button>`).join('')+'<button class="clr" id="clr" style="grid-column:span 2">Clear screen <kbd>0</kbd></button>';
+$('fx').onclick=e=>{const b=e.target.closest('button');if(!b)return;b.id==='clr'?clr():go(b.dataset.e)};
+addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;if(e.key==='0'||e.key==='Escape')clr();const f=FX[+e.key-1];if(f)go(f[1])});
+
+const COLS=['#2f7bff','#ff2d3d','#ffffff','#ffd23f','#2ee66b','#ff4fd8','#9b5cff','#28e0ff','#ff8a1f'];
+function drawChips(){$('chips').innerHTML=COLS.map(c=>`<button class="chip ${S.colors.includes(c)?'on':''}" data-c="${c}" style="background:${c}" title="${c}"></button>`).join('')}
+$('chips').onclick=e=>{const c=e.target.dataset.c;if(!c)return;S.colors=S.colors.includes(c)?S.colors.filter(x=>x!==c):[...S.colors,c];save();drawChips()};
+const PRE={'Blue + Red':['#2f7bff','#ff2d3d'],'Red·White·Blue':['#ff2d3d','#ffffff','#2f7bff'],'Rainbow':['#ff2d3d','#ff8a1f','#ffd23f','#2ee66b','#28e0ff','#2f7bff','#9b5cff','#ff4fd8'],'Gold':['#ffd23f','#ff8a1f','#ffffff'],'Pink/Purple':['#ff4fd8','#9b5cff','#ffffff']};
+$('presets').innerHTML=Object.keys(PRE).map(n=>`<button>${n}</button>`).join('');
+$('presets').onclick=e=>{const n=e.target.textContent;if(PRE[n]){S.colors=[...PRE[n]];save();drawChips()}};
+drawChips();
+
+const SL=[['count','Intensity',20,400,5],['size','Piece size',4,22,1],['grav','Gravity',.05,.4,.01],['dur','Duration (s)',1,8,.5],['fwCount','Fireworks',1,14,1],['fwSize','Firework size',.5,2,.1]];
+$('sl').innerHTML=SL.map(s=>`<div class="row"><label>${s[1]}</label><input type="range" id="s_${s[0]}" min="${s[2]}" max="${s[3]}" step="${s[4]}" value="${S[s[0]]}"><output id="o_${s[0]}">${S[s[0]]}</output></div>`).join('');
+SL.forEach(s=>{$('s_'+s[0]).oninput=e=>{S[s[0]]=+e.target.value;$('o_'+s[0]).textContent=S[s[0]];save()}});
+
+const SH=['square','circle','star','ribbon'];
+function drawShapes(){$('shapes').innerHTML=SH.map(h=>`<button class="${S.shapes.includes(h)?'on':''}" data-h="${h}">${h}</button>`).join('')}
+$('shapes').onclick=e=>{const h=e.target.dataset.h;if(!h)return;S.shapes=S.shapes.includes(h)?S.shapes.filter(x=>x!==h):[...S.shapes,h];save();drawShapes()};
+drawShapes();
+
+let at=null;
+function autoSet(){clearInterval(at);if($('auto').checked){const pool=['burst','sides','rain','fountain','fireworks','stars'];at=setInterval(()=>go(pick(pool)),+$('ai').value*1000)}}
+$('auto').onchange=autoSet;
+$('ai').oninput=()=>{$('aio').textContent=$('ai').value+'s';autoSet()};
+})();
+</script>
+</body></html>
