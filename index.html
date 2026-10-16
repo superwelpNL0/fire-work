@@ -54,10 +54,15 @@ code{background:#0f1117;padding:1px 5px;border-radius:4px;word-break:break-all}
   <div class="tg" id="shapes"></div>
   <h2>Auto mode</h2>
   <div class="row"><label><input type="checkbox" id="auto"> Auto fire</label><input type="range" id="ai" min="3" max="60" value="10"><output id="aio">10s</output></div>
-  <details><summary>OBS setup</summary>
-   <p>1. Add a <b>Browser Source</b> → Local file → this file, URL ending in <code>?overlay</code> (or <code>file:///path/celebration-overlay.html?overlay</code>). Size 1920×1080. Remove the custom CSS.</p>
-   <p>2. Open the panel in OBS via <b>Docks → Custom Browser Docks</b> with the same file (no <code>?overlay</code>).</p>
-   <p>If the dock doesn't trigger the overlay on a local file, host both from a local server (<code>python -m http.server</code>) and use <code>http://localhost:8000/celebration-overlay.html</code> for both.</p>
+  <h2>OBS overlay</h2>
+  <div class="sub" style="margin:0 0 8px">Effects only, transparent background. Paste this link into an OBS Browser Source (1920×1080).</div>
+  <input id="ourl" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);background:#0f1117;color:var(--tx);font:12px monospace">
+  <div class="grid" style="margin-top:6px"><button id="ocopy">Copy link</button><button id="oopen">Open overlay</button></div>
+  <div id="ost" class="sub" style="margin-top:8px"></div>
+  <details><summary>How to add it in OBS</summary>
+   <p>1. In OBS: Sources → + → <b>Browser</b>. Paste the link above in URL (or tick Local file and pick this file, then add <code>?overlay</code> to the path). Width 1920, height 1080.</p>
+   <p>2. Keep this panel open in your normal browser, or add it in OBS via <b>Docks → Custom Browser Docks</b> (same link without <code>?overlay</code>). The status above turns green when the overlay is connected.</p>
+   <p>If they don't connect from a local file, start <code>python -m http.server</code> in the folder and use <code>http://localhost:8000/index.html</code> for both.</p>
   </details>
  </div>
 </div>
@@ -173,6 +178,7 @@ function send(m){
 if(overlay){
  if(ch)ch.onmessage=e=>recv(e.data);
  addEventListener('storage',e=>{if(e.key==='cf-msg'&&e.newValue){try{recv(JSON.parse(e.newValue))}catch(_){}}});
+ setInterval(()=>{try{ch&&ch.postMessage({t:'hi',id:Math.random()})}catch(e){}try{localStorage.setItem('cf-hi',Date.now())}catch(e){}},2000);
  return;
 }
 
@@ -206,6 +212,15 @@ const SH=['square','circle','star','ribbon'];
 function drawShapes(){$('shapes').innerHTML=SH.map(h=>`<button class="${S.shapes.includes(h)?'on':''}" data-h="${h}">${h}</button>`).join('')}
 $('shapes').onclick=e=>{const h=e.target.dataset.h;if(!h)return;S.shapes=S.shapes.includes(h)?S.shapes.filter(x=>x!==h):[...S.shapes,h];save();drawShapes()};
 drawShapes();
+
+const ourl=location.href.split('#')[0].split('?')[0]+'?overlay';
+$('ourl').value=ourl;$('ourl').onclick=e=>e.target.select();
+$('ocopy').onclick=()=>{try{navigator.clipboard.writeText(ourl)}catch(e){$('ourl').select();document.execCommand('copy')}$('ocopy').textContent='Copied ✓';setTimeout(()=>$('ocopy').textContent='Copy link',1500)};
+$('oopen').onclick=()=>window.open(ourl,'_blank');
+let seen=0;const hi=()=>{seen=Date.now()};
+if(ch)ch.onmessage=e=>{if(e.data&&e.data.t==='hi')hi()};
+addEventListener('storage',e=>{if(e.key==='cf-hi')hi()});
+setInterval(()=>{$('ost').innerHTML=Date.now()-seen<5000?'<span style="color:#2ee66b">●</span> Overlay connected':'<span style="color:#ff5d5d">●</span> No overlay connected yet'},1000);
 
 let at=null;
 function autoSet(){clearInterval(at);if($('auto').checked){const pool=['burst','sides','rain','fountain','fireworks','stars'];at=setInterval(()=>go(pick(pool)),+$('ai').value*1000)}}
